@@ -1,180 +1,140 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { collection, addDoc, orderBy, query, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import { auth, db } from '../firebaseConfig';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { ChatHeader } from '../src/components/ChatHeader';
+import { MessageList } from '../src/components/MessageList';
+import { MessageInput } from '../src/components/MessageInput';
+import { useTheme } from '../src/theme/ThemeContext';
+import P2PService from '../services/P2PService';
 
-export default function ChatScreen({ navigation }) {
+export default function ChatScreen({ route, navigation }) {
+  const { colors } = useTheme();
+  const { peerId, nickname } = route.params || { peerId: 'Desconhecido', nickname: 'Anônimo' };
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const flatListRef = useRef();
+  const [participants, setParticipants] = useState([]);
+  const [status, setStatus] = useState('online');
 
-  // Botão de sair no topo
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <TouchableOpacity onPress={handleSignOut} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sair</Text>
-        </TouchableOpacity>
-      ),
-    });
+  useEffect(() => {
+    // Hide default header since we use custom ChatHeader
+    navigation.setOptions({ headerShown: false });
+
+    // Set initial participant list
+    setParticipants(P2PService.getConnections());
+
+    // Listener for changes in connection list
+    P2PService.onConnectionListChanged = (connections) => {
+      setParticipants(connections);
+    };
+
+    // Configurar o listener para receber mensagens
+    P2PService.onMessageReceived = (data, senderId, senderNickname) => {
+      // Ignore non-chat messages
+      if (data.type !== 'CHAT_MESSAGE') return;
+
+      const incomingMsg = {
+        id: Math.random().toString(),
+        content: data.payload.text,
+        createdAt: new Date(data.payload.createdAt),
+        sender: senderId,
+        senderNickname: senderNickname || 'Anônimo',
+        isOwn: false,
+      };
+      setMessages(prev => [...prev, incomingMsg]);
+    };
+
+    P2PService.onDisconnected = (disconnectedPeerId) => {
+      Alert.alert('Desconectado', `O usuário saiu da conversa.`);
+      setStatus('offline');
+      // If no more connections, go back
+      if (P2PService.getConnections().length === 0) {
+        navigation.goBack();
+      }
+    };
+
+    P2PService.onError = (errorMessage) => {
+      setStatus('error');
+    };
+
+    return () => {
+      // Limpa listeners ao sair da tela
+      P2PService.onMessageReceived = null;
+      P2PService.onDisconnected = null;
+      P2PService.onConnectionListChanged = null;
+      P2PService.onError = null;
+    };
   }, [navigation]);
 
-  // Escutar mensagens em tempo real
-  useEffect(() => {
-    const collectionRef = collection(db, 'messages');
-    const q = query(collectionRef, orderBy('createdAt', 'asc')); // Ordena por data
+  const handleSendMessage = (content) => {
+    const messagePayload = {
+      type: 'CHAT_MESSAGE',
+      payload: {
+        text: content,
+        createdAt: new Date().toISOString(),
+      }
+    };
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(
-        snapshot.docs.map(doc => ({
-          _id: doc.id,
-          createdAt: doc.data().createdAt?.toDate(), // Converte timestamp do Firestore
-          text: doc.data().text,
-          user: doc.data().user,
-          email: doc.data().email
-        }))
-      );
-    });
+    // Envia via P2P
+    P2PService.sendMessage(messagePayload);
 
-    return unsubscribe;
-  }, []);
+    // Adiciona na nossa lista local para vermos o que enviamos
+    const myMsg = {
+      id: Math.random().toString(),
+      content: content,
+      createdAt: new Date(),
+      sender: 'ME',
+      senderNickname: nickname,
+      isOwn: true,
+    };
 
-  const handleSignOut = () => {
-    signOut(auth).catch(error => console.log('Erro ao sair: ', error));
+    setMessages(prev => [...prev, myMsg]);
   };
 
-  const handleSend = async () => {
-    if (newMessage.trim().length === 0) return;
-
-    const textToSend = newMessage;
-    setNewMessage(''); // Limpa input imediatamente
-
-    try {
-      await addDoc(collection(db, 'messages'), {
-        text: textToSend,
-        createdAt: serverTimestamp(),
-        user: auth.currentUser.uid,
-        email: auth.currentUser.email
-      });
-    } catch (error) {
-      console.error("Erro ao enviar mensagem: ", error);
-    }
-  };
-
-  const renderItem = ({ item }) => {
-    const isMyMessage = item.user === auth.currentUser?.uid;
-
-    return (
-      <View style={[
-        styles.messageBubble, 
-        isMyMessage ? styles.myMessage : styles.otherMessage
-      ]}>
-        <Text style={styles.senderName}>
-          {isMyMessage ? 'Você' : item.email?.split('@')[0]}
-        </Text>
-        <Text style={styles.messageText}>{item.text}</Text>
-      </View>
+  const handleDisconnect = () => {
+    Alert.alert(
+      'Sair do Chat',
+      'Tem certeza que deseja sair?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Sair', 
+          style: 'destructive',
+          onPress: () => {
+            // Notifica outros peers antes de sair
+            P2PService.disconnect();
+            navigation.goBack();
+          }
+        },
+      ]
     );
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={90}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderItem}
-        keyExtractor={item => item._id}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-        onLayout={() => flatListRef.current?.scrollToEnd()}
-        style={styles.list}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ChatHeader
+        participants={participants}
+        status={status}
+        onDisconnect={handleDisconnect}
       />
-
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Digite uma mensagem..."
-          value={newMessage}
-          onChangeText={setNewMessage}
+      
+      <KeyboardAvoidingView 
+        style={styles.content} 
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <MessageList messages={messages} />
+        <MessageInput 
+          onSend={handleSendMessage} 
+          disabled={status !== 'online'} 
         />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-          <Text style={styles.sendButtonText}>Enviar</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
-  list: {
+  content: {
     flex: 1,
-    padding: 10,
   },
-  messageBubble: {
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 10,
-    maxWidth: '80%',
-  },
-  myMessage: {
-    backgroundColor: '#dcf8c6',
-    alignSelf: 'flex-end',
-    marginLeft: 50,
-  },
-  otherMessage: {
-    backgroundColor: '#f0f0f0',
-    alignSelf: 'flex-start',
-    marginRight: 50,
-  },
-  senderName: {
-    fontSize: 10,
-    color: '#555',
-    marginBottom: 2,
-  },
-  messageText: {
-    fontSize: 16,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 10,
-    borderTopWidth: 1,
-    borderColor: '#eee',
-    backgroundColor: '#fff',
-    alignItems: 'center'
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginRight: 10,
-    backgroundColor: '#fafafa',
-  },
-  sendButton: {
-    backgroundColor: '#007bff',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  sendButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  logoutButton: {
-    marginRight: 15,
-  },
-  logoutText: {
-    color: 'red',
-    fontWeight: 'bold'
-  }
 });

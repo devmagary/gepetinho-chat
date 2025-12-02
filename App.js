@@ -1,47 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebaseConfig';
-import { View, ActivityIndicator } from 'react-native';
+import { StatusBar } from 'react-native';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
 // Telas
-import LoginScreen from './screens/LoginScreen';
+import HomeScreen from './screens/HomeScreen';
 import ChatScreen from './screens/ChatScreen';
 
 const Stack = createNativeStackNavigator();
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (authenticatedUser) => {
-      setUser(authenticatedUser);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
-    );
-  }
-
+function AppContent() {
+  const { isDark, colors } = useTheme();
+  
   return (
     <NavigationContainer>
-      <Stack.Navigator>
-        {user ? (
-          // Usuário Logado
-          <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat Gepetinho' }} />
-        ) : (
-          // Usuário Não Logado
-          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-        )}
+      <StatusBar 
+        barStyle={isDark ? "light-content" : "dark-content"} 
+        backgroundColor={colors.background} 
+      />
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen 
+          name="Home" 
+          component={HomeScreen}
+        />
+        <Stack.Screen 
+          name="Chat" 
+          component={ChatScreen}
+        />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

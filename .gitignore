@@ -1,41 +1,60 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# General
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# dependencies
+# Node
 node_modules/
+npm-debug.log
+yarn-error.log
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
+# React Native
+.metro/
 .metro-health-check*
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/app/.cxx/
+android/local.properties
+android/*.iml
+android/app/*.iml
+android/.idea/
+android/.navigation/
+android/captures/
+*.ap_
+*.dex
+*.class
 
-# macOS
-.DS_Store
-*.pem
+# Keystores
+*.jks
+*.keystore
+*.p12
+*.key
 
-# local env files
-.env*.local
+# Fastlane
+*/fastlane/report.xml
+*/fastlane/Preview.html
+*/fastlane/screenshots
+*/fastlane/test_output
 
-# typescript
-*.tsbuildinfo
+# Bundle artifacts
+*.jsbundle
+*.jsbundle.map
 
-# generated native folders
-/ios
-/android
+# iOS (Standard ignores, even if not currently used)
+ios/*.mode1v3
+ios/*.mode2v3
+ios/*.moved-aside
+ios/*.nxmodule
+ios/*.pbxuser
+ios/*.perspectivev3
+ios/*.xcworkspace
+ios/Pods/
+ios/build/
+ios/DerivedData/
