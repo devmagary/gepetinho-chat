@@ -37,7 +37,7 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/my-upload-key.keystore
 
       - name: Build Release APK
-        cd android
+        working-directory: android
         env:
           MYAPP_UPLOAD_STORE_FILE: my-upload-key.keystore
           MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
